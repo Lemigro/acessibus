@@ -103,7 +103,9 @@ class NotificacaoService {
   /// Ativa vibração no dispositivo
   Future<void> _vibrar() async {
     try {
-      if (await Vibration.hasVibrator() ?? false) {
+      // Verifica se o dispositivo tem vibrator disponível
+      final bool? hasVibrator = await Vibration.hasVibrator();
+      if (hasVibrator == true) {
         // Padrão de vibração: 3 pulsos curtos
         await Vibration.vibrate(pattern: [0, 200, 100, 200, 100, 200]);
       }
