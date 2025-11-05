@@ -1,0 +1,19 @@
+INSTRUÇÕES PARA ADICIONAR A LOGO DO PROJETO
+
+1. Coloque o arquivo da logo neste diretório com o nome:
+   - logo.png
+
+2. A logo deve ter:
+   - Formato: PNG (com ou sem transparência)
+   - Dimensões recomendadas: 512x512px ou maior
+   - Nome do arquivo: logo.png (exatamente como está)
+
+3. O aplicativo já está configurado para usar a logo.
+   Se a logo não for encontrada, o app usará ícones Material Design como fallback.
+
+4. Após adicionar a logo, execute:
+   flutter pub get
+   
+   E então execute o app novamente.
+
+
