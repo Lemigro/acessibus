@@ -152,8 +152,13 @@ class _LinhaOnibusPageState extends State<LinhaOnibusPage> {
                       initialCameraPosition: _kInitialPosition,
                       myLocationEnabled: true,
                       myLocationButtonEnabled: false,
-                      zoomControlsEnabled: false,
+                      zoomControlsEnabled: true, // Habilita controles de zoom
+                      zoomGesturesEnabled: true,
+                      scrollGesturesEnabled: true,
+                      tiltGesturesEnabled: true,
+                      rotateGesturesEnabled: true,
                       onMapCreated: (GoogleMapController controller) {
+                        print('Mapa: GoogleMap criado com sucesso');
                         _mapController = controller;
                         // Se já temos a localização, centraliza o mapa
                         if (_currentPosition != null) {
@@ -167,6 +172,12 @@ class _LinhaOnibusPageState extends State<LinhaOnibusPage> {
                           );
                         }
                       },
+                      onCameraMoveStarted: () {
+                        debugPrint('Mapa: Câmera começou a se mover');
+                      },
+                      onCameraIdle: () {
+                        debugPrint('Mapa: Câmera parou');
+                      },
                     ),
                     // Indicador de carregamento
                     if (_isLoadingLocation)
@@ -177,14 +188,16 @@ class _LinhaOnibusPageState extends State<LinhaOnibusPage> {
                         ),
                       ),
                     // Botão para centralizar na localização
-                    // Posicionado à esquerda para não sobrepor os controles de zoom do Google Maps
+                    // Posicionado à esquerda e mais acima para não sobrepor os controles de zoom do Google Maps
+                    // Os controles de zoom ficam no canto inferior direito (bottom-right)
                     Positioned(
-                      bottom: 16,
+                      bottom: 80, // Mais acima para não sobrepor os controles de zoom
                       left: 16,
                       child: FloatingActionButton(
                         mini: true,
                         backgroundColor: Colors.green,
                         onPressed: _getCurrentLocation,
+                        tooltip: 'Centralizar na minha localização',
                         child: const Icon(
                           Icons.my_location,
                           color: Colors.white,
@@ -213,6 +226,15 @@ class _LinhaOnibusPageState extends State<LinhaOnibusPage> {
                           color: Colors.grey[600],
                           fontSize: 16,
                         ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Verifique se a Google Maps API Key está configurada',
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 12,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
                     ],
                   ),

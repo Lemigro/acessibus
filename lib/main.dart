@@ -13,6 +13,7 @@ import 'pages/alerta_onibus_page.dart';
 import 'pages/informacoes_onibus_page.dart';
 import 'services/notificacao_service.dart';
 import 'services/theme_service.dart';
+import 'services/mqtt_service.dart';
 import 'models/linha_onibus_model.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -40,6 +41,26 @@ void main() async {
   
   // Inicializa serviço de notificações
   await NotificacaoService().inicializar();
+  
+  // Inicializa MQTT para receber avisos de chegada do ônibus
+  // Conecta sem especificar linha para receber todos os avisos
+  try {
+    final mqttService = MqttService();
+    print('=== Inicializando MQTT ===');
+    final iniciado = await mqttService.iniciarMonitoramento();
+    if (iniciado) {
+      print('✅ MQTT inicializado com sucesso!');
+      // Verifica status após inicialização
+      mqttService.verificarStatus();
+    } else {
+      print('❌ Falha ao inicializar MQTT');
+      mqttService.verificarStatus();
+    }
+  } catch (e, stackTrace) {
+    print('❌ Erro ao inicializar MQTT: $e');
+    print('Stack trace: $stackTrace');
+    // Continua mesmo se o MQTT falhar
+  }
   
   runApp(const AcessibusApp());
 }

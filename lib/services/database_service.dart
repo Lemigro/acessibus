@@ -33,8 +33,9 @@ class DatabaseService {
       String path = join(await getDatabasesPath(), 'acessibus.db');
       return await openDatabase(
         path,
-        version: 1,
+        version: 2, // Incrementado para forçar atualização
         onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
       );
     } catch (e) {
       // Se falhar (ex: web), retorna null e usar dados estáticos
@@ -83,23 +84,38 @@ class DatabaseService {
     await _insertDadosTeste(db);
   }
 
+  /// Atualiza o banco de dados quando a versão muda
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    print('Atualizando banco de dados da versão $oldVersion para $newVersion');
+    
+    if (oldVersion < 2) {
+      // Versão 2: Atualiza as linhas de teste
+      // Limpa as linhas antigas e insere as novas
+      await db.delete('linhas_onibus');
+      await _insertDadosTeste(db);
+      print('✅ Dados de teste atualizados com sucesso!');
+    }
+  }
+
   Future<void> _insertDadosTeste(Database db) async {
     // Inserir linhas de ônibus de teste
     final linhas = [
+      // Linhas de teste para integração com Arduino
       LinhaOnibus(
-        numero: '101',
-        nome: 'Centro - Terminal',
+        numero: '132A',
+        nome: 'Centro - Terminal (Teste Visual)',
         origem: 'Centro',
         destino: 'Terminal Rodoviário',
-        descricao: 'Linha principal que conecta o centro à rodoviária',
+        descricao: 'Linha de teste - Botão Visual do dispositivo físico',
       ),
       LinhaOnibus(
-        numero: '201',
-        nome: 'Universidade - Shopping',
+        numero: '251B',
+        nome: 'Universidade - Shopping (Teste Auditivo)',
         origem: 'Universidade',
         destino: 'Shopping Center',
-        descricao: 'Linha que atende estudantes e compradores',
+        descricao: 'Linha de teste - Botão Auditivo do dispositivo físico',
       ),
+      // Outras linhas para demonstração
       LinhaOnibus(
         numero: '301',
         nome: 'Bairro Novo - Centro',
@@ -206,22 +222,24 @@ class DatabaseService {
   /// Retorna dados de teste estáticos (fallback para web)
   List<LinhaOnibus> _getLinhasTeste() {
     return [
+      // Linhas de teste para integração com Arduino
       LinhaOnibus(
         id: 1,
-        numero: '101',
-        nome: 'Centro - Terminal',
+        numero: '132A',
+        nome: 'Centro - Terminal (Teste Visual)',
         origem: 'Centro',
         destino: 'Terminal Rodoviário',
-        descricao: 'Linha principal que conecta o centro à rodoviária',
+        descricao: 'Linha de teste - Botão Visual do dispositivo físico',
       ),
       LinhaOnibus(
         id: 2,
-        numero: '201',
-        nome: 'Universidade - Shopping',
+        numero: '251B',
+        nome: 'Universidade - Shopping (Teste Auditivo)',
         origem: 'Universidade',
         destino: 'Shopping Center',
-        descricao: 'Linha que atende estudantes e compradores',
+        descricao: 'Linha de teste - Botão Auditivo do dispositivo físico',
       ),
+      // Outras linhas para demonstração
       LinhaOnibus(
         id: 3,
         numero: '301',

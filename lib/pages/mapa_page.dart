@@ -394,8 +394,20 @@ class _MapaPageState extends State<MapaPage> {
                       myLocationEnabled: true,
                       myLocationButtonEnabled: false,
                       zoomControlsEnabled: true,
+                      zoomGesturesEnabled: true,
+                      scrollGesturesEnabled: true,
+                      tiltGesturesEnabled: true,
+                      rotateGesturesEnabled: true,
                       onMapCreated: (GoogleMapController controller) {
+                        print('Mapa: GoogleMap criado com sucesso');
                         _mapController = controller;
+                        _updateMarkers();
+                      },
+                      onCameraMoveStarted: () {
+                        debugPrint('Mapa: Câmera começou a se mover');
+                      },
+                      onCameraIdle: () {
+                        debugPrint('Mapa: Câmera parou');
                       },
                     ),
                     // Painel de seleção de linha

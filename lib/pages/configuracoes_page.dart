@@ -131,7 +131,7 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
                       decoration: BoxDecoration(
                         color: _altoContraste
                             ? Colors.grey[900]
-                            : Colors.white,
+                            : (_darkTheme ? theme.cardColor : Colors.white),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: _altoContraste
@@ -319,7 +319,7 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
                       decoration: BoxDecoration(
                         color: _altoContraste
                             ? Colors.grey[900]
-                            : Colors.white,
+                            : (_darkTheme ? theme.cardColor : Colors.white),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: _altoContraste
@@ -487,7 +487,7 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
                       decoration: BoxDecoration(
                         color: _altoContraste
                             ? Colors.grey[900]
-                            : Colors.white,
+                            : (_darkTheme ? theme.cardColor : Colors.white),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: _altoContraste
@@ -753,7 +753,7 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
                       decoration: BoxDecoration(
                         color: _altoContraste
                             ? Colors.grey[900]
-                            : Colors.white,
+                            : (_darkTheme ? theme.cardColor : Colors.white),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: _altoContraste

@@ -11,6 +11,7 @@ import '../models/ponto_parada_model.dart';
 import '../services/directions_service.dart';
 import '../services/auth_service.dart';
 import '../services/theme_service.dart';
+import '../services/mqtt_service.dart';
 
 class InformacoesOnibusPage extends StatefulWidget {
   final LinhaOnibus linha;
@@ -30,6 +31,7 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
   final DatabaseReference _database = FirebaseDatabase.instance.ref();
   final AuthService _authService = AuthService();
   final ThemeService _themeService = ThemeService();
+  final MqttService _mqttService = MqttService();
   Position? _currentPosition;
   bool _isLoadingLocation = true;
   Set<Polyline> _polylines = {};
@@ -64,6 +66,13 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
         _isLoadingLocation = false;
       });
     }
+    // Configura callback MQTT para receber localização em tempo real
+    // IMPORTANTE: Configurar ANTES de subscrever para não perder mensagens
+    _configurarMqttCallback();
+    // Subscreve ao tópico MQTT da linha
+    _subscreverMqttLinha();
+    
+    print('InformacoesOnibusPage: ✅ Inicialização completa - Pronto para receber localização via MQTT');
   }
 
   Future<void> _verificarLinhaConfirmada() async {
@@ -105,11 +114,36 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
     });
   }
 
+  /// Formata timestamp para exibição
+  String _formatarTimestamp(dynamic timestamp) {
+    try {
+      if (timestamp == null) return 'N/A';
+      final int ts = timestamp is int ? timestamp : timestamp as int;
+      final dateTime = DateTime.fromMillisecondsSinceEpoch(ts);
+      final agora = DateTime.now();
+      final diferenca = agora.difference(dateTime);
+      
+      if (diferenca.inSeconds < 60) {
+        return 'há ${diferenca.inSeconds}s';
+      } else if (diferenca.inMinutes < 60) {
+        return 'há ${diferenca.inMinutes}min';
+      } else {
+        return 'há ${diferenca.inHours}h';
+      }
+    } catch (e) {
+      return 'N/A';
+    }
+  }
+
   @override
   void dispose() {
     _themeService.removeListener(_onThemeChanged);
     _subscription?.cancel();
     _pararMonitoramento();
+    // Remove callback MQTT (define como função vazia)
+    _mqttService.onLocalizacaoOnibus((String linha, double lat, double lon) {
+      // Callback removido - não faz nada
+    });
     // Cancela timer de atualização de marcadores
     _markerUpdateTimer?.cancel();
     // Cancela qualquer animação em andamento
@@ -151,23 +185,32 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
+      if (!mounted) return;
+      
       setState(() {
         _currentPosition = position;
         _isLoadingLocation = false;
       });
 
+      if (!mounted) return;
       _updateMarkers();
+      
       // Anima a câmera de forma segura, evitando múltiplas animações simultâneas
-      _safeAnimateCamera(
-        CameraUpdate.newLatLng(
-          LatLng(position.latitude, position.longitude),
-        ),
-      );
+      if (mounted) {
+        _safeAnimateCamera(
+          CameraUpdate.newLatLng(
+            LatLng(position.latitude, position.longitude),
+          ),
+        );
+      }
     } catch (e) {
+      if (!mounted) return;
+      
       setState(() {
         _isLoadingLocation = false;
       });
-      if (mounted) {
+      
+      if (mounted && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erro ao obter localização: $e'),
@@ -180,10 +223,14 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
 
   Future<void> _carregarRota() async {
     try {
+      if (!mounted) return;
+      
       // Buscar pontos de parada da linha (simulado)
       // Em produção, você buscaria da tabela linha_ponto
       final DatabaseService dbService = DatabaseService();
       final pontos = await dbService.getAllPontos();
+      
+      if (!mounted) return;
       
       // Filtrar pontos relacionados à linha (simulado)
       List<PontoParada> pontosLinha = pontos.where((ponto) {
@@ -223,6 +270,8 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
         travelMode: 'transit',
       );
 
+      if (!mounted) return;
+
       if (result != null && result.points.isNotEmpty) {
         setState(() {
           _polylines = {
@@ -236,14 +285,20 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
           };
         });
 
-        if (result.bounds != null) {
+        if (result.bounds != null && mounted) {
           _safeAnimateCamera(
             CameraUpdate.newLatLngBounds(result.bounds!, 100),
           );
         }
       }
     } catch (e) {
-      if (mounted) {
+      // Ignora erros de API (INVALID_REQUEST é comum quando não há rota válida)
+      if (e.toString().contains('INVALID_REQUEST')) {
+        print('InformacoesOnibusPage: Rota não disponível para esta linha (normal)');
+        return;
+      }
+      
+      if (mounted && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erro ao carregar rota: $e'),
@@ -328,6 +383,94 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
     }
   }
 
+  /// Configura callback MQTT para receber localização em tempo real
+  void _configurarMqttCallback() {
+    print('InformacoesOnibusPage: ========== CONFIGURANDO CALLBACK MQTT ==========');
+    print('InformacoesOnibusPage: Linha esperada: "${widget.linha.numero}"');
+    
+    _mqttService.onLocalizacaoOnibus((String linha, double lat, double lon) {
+      print('InformacoesOnibusPage: ========== CALLBACK MQTT EXECUTADO ==========');
+      print('InformacoesOnibusPage: 📍 Localização recebida via MQTT!');
+      print('InformacoesOnibusPage: Linha recebida: "$linha"');
+      print('InformacoesOnibusPage: Linha esperada: "${widget.linha.numero}"');
+      print('InformacoesOnibusPage: Lat: $lat, Lon: $lon');
+      print('InformacoesOnibusPage: Widget montado: $mounted');
+      
+      // Compara linhas de forma case-insensitive
+      final linhaRecebida = linha.trim().toUpperCase();
+      final linhaEsperada = widget.linha.numero.trim().toUpperCase();
+      
+      print('InformacoesOnibusPage: Comparando "$linhaRecebida" com "$linhaEsperada"');
+      print('InformacoesOnibusPage: São iguais? ${linhaRecebida == linhaEsperada}');
+      
+      // Só processa se for a linha atual
+      if (linhaRecebida == linhaEsperada) {
+        print('InformacoesOnibusPage: ✅ Linha corresponde! Atualizando localização...');
+        
+        if (!mounted) {
+          print('InformacoesOnibusPage: ⚠️ Widget não está montado, ignorando atualização');
+          return;
+        }
+        
+        print('InformacoesOnibusPage: Chamando setState...');
+        setState(() {
+          _localizacaoOnibus = {
+            'latitude': lat,
+            'longitude': lon,
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+            'fonte': 'mqtt', // Indica que veio do MQTT
+          };
+        });
+        
+        print('InformacoesOnibusPage: ✅ Estado atualizado com localização: Lat=$lat, Lon=$lon');
+        print('InformacoesOnibusPage: _localizacaoOnibus agora é: $_localizacaoOnibus');
+        
+        // Atualiza marcadores sem animar câmera automaticamente
+        if (mounted) {
+          print('InformacoesOnibusPage: Atualizando marcadores...');
+          _updateMarkers(animateCamera: false);
+          print('InformacoesOnibusPage: ✅ Marcadores atualizados no mapa');
+        }
+        
+        print('InformacoesOnibusPage: ===========================================');
+      } else {
+        print('InformacoesOnibusPage: ⏭️ Linha não corresponde (recebida: "$linhaRecebida", esperada: "$linhaEsperada")');
+        print('InformacoesOnibusPage: ===========================================');
+      }
+    });
+    
+    print('InformacoesOnibusPage: ✅ Callback MQTT configurado com sucesso');
+    print('InformacoesOnibusPage: ===========================================');
+  }
+
+  /// Subscreve ao tópico MQTT da linha para receber localização em tempo real
+  Future<void> _subscreverMqttLinha() async {
+    try {
+      print('InformacoesOnibusPage: Subscrevendo ao tópico MQTT da linha ${widget.linha.numero}');
+      
+      // Verifica se o MQTT já está conectado e monitorando
+      if (!_mqttService.conectado) {
+        print('InformacoesOnibusPage: MQTT não está conectado, aguardando conexão...');
+        // Aguarda um pouco para garantir que o MQTT inicializou
+        await Future.delayed(const Duration(seconds: 2));
+      }
+      
+      // Reinicia monitoramento com a linha específica para subscrever ao tópico
+      final sucesso = await _mqttService.iniciarMonitoramento(linha: widget.linha.numero);
+      
+      if (sucesso) {
+        print('InformacoesOnibusPage: ✅ Subscrito ao tópico localizacao_onibus/linha_${widget.linha.numero}');
+        print('InformacoesOnibusPage: ✅ MQTT está conectado: ${_mqttService.conectado}');
+        print('InformacoesOnibusPage: ✅ MQTT está monitorando: ${_mqttService.monitorando}');
+      } else {
+        print('InformacoesOnibusPage: ❌ Falha ao subscrever ao tópico MQTT');
+      }
+    } catch (e, stackTrace) {
+      print('InformacoesOnibusPage: ❌ Erro ao subscrever ao tópico MQTT: $e');
+      print('Stack trace: $stackTrace');
+    }
+  }
+
   Future<void> _iniciarMonitoramento() async {
     if (_monitorando) return;
 
@@ -336,7 +479,7 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
     });
 
     try {
-      // Buscar localização do ônibus via Firebase Realtime Database
+      // Buscar localização do ônibus via Firebase Realtime Database (fallback)
       final idOnibus = 'onibus_${widget.linha.numero}';
       
       // Listener para mudanças na localização do ônibus
@@ -529,7 +672,7 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
             // Informações do ônibus
             Container(
               padding: const EdgeInsets.all(16),
-              color: Colors.white,
+              color: Theme.of(context).cardColor,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -562,9 +705,9 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
                             ),
                             Text(
                               widget.linha.nome,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 16,
-                                color: Colors.grey,
+                                color: Theme.of(context).textTheme.bodyMedium?.color ?? Colors.grey,
                               ),
                             ),
                           ],
@@ -579,17 +722,19 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
                         child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.blue.shade50,
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.blue.withOpacity(0.2)
+                                : Colors.blue.shade50,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 'Origem',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Colors.grey,
+                                  color: Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey,
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -615,17 +760,19 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
                         child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.green.shade50,
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.green.withOpacity(0.2)
+                                : Colors.green.shade50,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 'Destino',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Colors.grey,
+                                  color: Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey,
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -647,7 +794,9 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.red.shade50,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.red.withOpacity(0.2)
+                            : Colors.red.shade50,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: Colors.red,
@@ -666,12 +815,34 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'Localização do Ônibus',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey,
-                                  ),
+                                Row(
+                                  children: [
+                                    Text(
+                                      'Localização do Ônibus',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    // Indicador de fonte (MQTT ou Firebase)
+                                    if (_localizacaoOnibus!['fonte'] == 'mqtt')
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: const Text(
+                                          'MQTT',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
@@ -682,6 +853,16 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
+                                if (_localizacaoOnibus!['timestamp'] != null) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Atualizado: ${_formatarTimestamp(_localizacaoOnibus!['timestamp'])}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey,
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -696,6 +877,47 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
                                 ),
                               ),
                             ),
+                        ],
+                      ),
+                    ),
+                  ] else if (_monitorando) ...[
+                    // Mostra indicador de espera quando está monitorando mas ainda não recebeu localização
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.orange.withOpacity(0.2)
+                            : Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.orange,
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.orange,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Aguardando localização do ônibus via MQTT...',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -737,25 +959,26 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
                           child: CircularProgressIndicator(),
                         ),
                       ),
-                    // Botão para centralizar na localização
+                    // Botão para centralizar na localização (lado esquerdo para não sobrepor zoom)
                     Positioned(
                       bottom: 16,
-                      right: 16,
+                      left: 16,
                       child: FloatingActionButton(
                         mini: true,
                         backgroundColor: Colors.green,
                         onPressed: _getCurrentLocation,
+                        tooltip: 'Centralizar na minha localização',
                         child: const Icon(
                           Icons.my_location,
                           color: Colors.white,
                         ),
                       ),
                     ),
-                    // Botão para centralizar no ônibus (se disponível)
+                    // Botão para centralizar no ônibus (se disponível, lado esquerdo)
                     if (_localizacaoOnibus != null)
                       Positioned(
                         bottom: 80,
-                        right: 16,
+                        left: 16,
                         child: FloatingActionButton(
                           mini: true,
                           backgroundColor: Colors.red,
@@ -767,6 +990,7 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
                               _updateMarkers(animateCamera: true);
                             }
                           },
+                          tooltip: 'Centralizar no ônibus',
                           child: const Icon(
                             Icons.directions_bus,
                             color: Colors.white,
@@ -836,13 +1060,15 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
             else
               Padding(
                 padding: const EdgeInsets.all(24.0),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.green, width: 2),
-                  ),
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.green.withOpacity(0.2)
+                                : Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.green, width: 2),
+                          ),
                   child: Row(
                     children: [
                       const Icon(Icons.check_circle, color: Colors.green, size: 32),
@@ -851,7 +1077,7 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'Linha Selecionada',
                               style: TextStyle(
                                 fontSize: 18,
@@ -863,7 +1089,7 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
                               'Você será notificado quando o ônibus chegar',
                               style: TextStyle(
                                 fontSize: 14,
-                                color: Colors.grey[700],
+                                color: Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey[700],
                               ),
                             ),
                           ],
