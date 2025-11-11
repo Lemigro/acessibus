@@ -90,7 +90,7 @@ class ESP8266Service {
         // {
         //   "onibus_chegando": true/false,
         //   "linha": "100",
-        //   "distancia": "50" (opcional, em metros)
+        //   "distancia": "50 metros"
         // }
         
         if (data['onibus_chegando'] == true) {

@@ -56,7 +56,7 @@ class _AlertaOnibusPageState extends State<AlertaOnibusPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _altoContraste ? Colors.black : const Color(0xFFF5F5DC),
+      backgroundColor: _altoContraste ? Colors.black : Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Center(
           child: Padding(

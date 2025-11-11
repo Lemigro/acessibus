@@ -1,5 +1,5 @@
 import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -39,6 +39,9 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
   bool _linhaConfirmada = false;
   StreamSubscription? _subscription;
   bool _altoContraste = false;
+  bool _isAnimating = false; // Flag para controlar animações simultâneas
+  DateTime? _lastMarkerUpdate; // Timestamp da última atualização de marcadores
+  Timer? _markerUpdateTimer; // Timer para throttling de atualizações
 
   // Coordenadas padrão (Recife)
   static const CameraPosition _kInitialPosition = CameraPosition(
@@ -107,7 +110,13 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
     _themeService.removeListener(_onThemeChanged);
     _subscription?.cancel();
     _pararMonitoramento();
+    // Cancela timer de atualização de marcadores
+    _markerUpdateTimer?.cancel();
+    // Cancela qualquer animação em andamento
+    _isAnimating = false;
+    // Limpa o controller do mapa de forma segura
     _mapController?.dispose();
+    _mapController = null;
     super.dispose();
   }
 
@@ -148,7 +157,8 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
       });
 
       _updateMarkers();
-      _mapController?.animateCamera(
+      // Anima a câmera de forma segura, evitando múltiplas animações simultâneas
+      _safeAnimateCamera(
         CameraUpdate.newLatLng(
           LatLng(position.latitude, position.longitude),
         ),
@@ -227,7 +237,7 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
         });
 
         if (result.bounds != null) {
-          _mapController?.animateCamera(
+          _safeAnimateCamera(
             CameraUpdate.newLatLngBounds(result.bounds!, 100),
           );
         }
@@ -244,7 +254,25 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
     }
   }
 
-  void _updateMarkers() {
+  /// Atualiza os marcadores do mapa com throttling para evitar atualizações muito frequentes
+  void _updateMarkers({bool animateCamera = false}) {
+    // Throttling: só atualiza marcadores no máximo a cada 500ms
+    final now = DateTime.now();
+    if (_lastMarkerUpdate != null && 
+        now.difference(_lastMarkerUpdate!).inMilliseconds < 500) {
+      // Agenda atualização para depois
+      _markerUpdateTimer?.cancel();
+      _markerUpdateTimer = Timer(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _updateMarkers(animateCamera: animateCamera);
+        }
+      });
+      return;
+    }
+
+    _lastMarkerUpdate = now;
+    _markerUpdateTimer?.cancel();
+
     Set<Marker> markers = {};
 
     // Marcar localização atual do usuário
@@ -284,16 +312,20 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
           ),
         );
 
-        // Centralizar mapa no ônibus
-        _mapController?.animateCamera(
-          CameraUpdate.newLatLng(LatLng(lat, lng)),
-        );
+        // Só anima a câmera se explicitamente solicitado (não automaticamente)
+        if (animateCamera) {
+          _safeAnimateCamera(
+            CameraUpdate.newLatLng(LatLng(lat, lng)),
+          );
+        }
       }
     }
 
-    setState(() {
-      _markers = markers;
-    });
+    if (mounted) {
+      setState(() {
+        _markers = markers;
+      });
+    }
   }
 
   Future<void> _iniciarMonitoramento() async {
@@ -308,6 +340,7 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
       final idOnibus = 'onibus_${widget.linha.numero}';
       
       // Listener para mudanças na localização do ônibus
+      // Usa throttling para evitar atualizações muito frequentes
       _subscription = _database
           .child('dados')
           .child(idOnibus)
@@ -316,12 +349,14 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
         if (event.snapshot.exists && mounted) {
           final data = event.snapshot.value as Map<dynamic, dynamic>?;
           if (data != null) {
+            // Atualiza dados sem animar câmera automaticamente
             setState(() {
               _localizacaoOnibus = Map<String, dynamic>.from(
                 data.map((key, value) => MapEntry(key.toString(), value)),
               );
             });
-            _updateMarkers();
+            // Atualiza marcadores sem animar câmera (throttling já está dentro)
+            _updateMarkers(animateCamera: false);
           }
         }
       });
@@ -343,11 +378,35 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
   void _pararMonitoramento() {
     _subscription?.cancel();
     _subscription = null;
+    _markerUpdateTimer?.cancel();
     setState(() {
       _monitorando = false;
       _localizacaoOnibus = null;
     });
     _updateMarkers();
+  }
+
+  /// Anima a câmera de forma segura, evitando múltiplas animações simultâneas
+  /// que podem causar problemas com buffers de imagem no Android
+  Future<void> _safeAnimateCamera(CameraUpdate update) async {
+    if (_mapController == null || _isAnimating || !mounted) return;
+    
+    try {
+      _isAnimating = true;
+      await _mapController!.animateCamera(update);
+    } catch (e) {
+      // Ignora erros de animação se o widget foi desmontado
+      if (mounted) {
+        debugPrint('Erro ao animar câmera: $e');
+      }
+    } finally {
+      // Aguarda um delay maior antes de permitir nova animação (aumentado para 800ms)
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (mounted) {
+          _isAnimating = false;
+        }
+      });
+    }
   }
 
   Future<void> _confirmarLinha() async {
@@ -430,9 +489,11 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _altoContraste ? Colors.black : const Color(0xFFF5F5DC),
+      backgroundColor: _altoContraste ? Colors.black : Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.green,
+        backgroundColor: Theme.of(context).brightness == Brightness.dark 
+            ? Theme.of(context).colorScheme.surface 
+            : Colors.green,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () {
@@ -702,9 +763,8 @@ class _InformacoesOnibusPageState extends State<InformacoesOnibusPage> {
                             final lat = _localizacaoOnibus!['latitude']?.toDouble();
                             final lng = _localizacaoOnibus!['longitude']?.toDouble();
                             if (lat != null && lng != null) {
-                              _mapController?.animateCamera(
-                                CameraUpdate.newLatLng(LatLng(lat, lng)),
-                              );
+                              // Atualiza marcadores e anima câmera quando o usuário clica no botão
+                              _updateMarkers(animateCamera: true);
                             }
                           },
                           child: const Icon(

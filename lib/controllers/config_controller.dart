@@ -20,6 +20,7 @@ class ConfigController extends ChangeNotifier {
   String _idOnibusRealtime = '';
   
   // Configurações de acessibilidade
+  bool _darkTheme = false;
   bool _altoContraste = false;
   bool _leitorTela = true;
   double _tamanhoFonte = 1.0;
@@ -37,6 +38,7 @@ class ConfigController extends ChangeNotifier {
   String get ipESP8266 => _ipESP8266;
   String get idOnibusRealtime => _idOnibusRealtime;
   
+  bool get darkTheme => _darkTheme;
   bool get altoContraste => _altoContraste;
   bool get leitorTela => _leitorTela;
   double get tamanhoFonte => _tamanhoFonte;
@@ -51,6 +53,7 @@ class ConfigController extends ChangeNotifier {
     notifyListeners();
     
     try {
+      _darkTheme = await _prefs.getDarkTheme();
       _altoContraste = await _prefs.getAltoContraste();
       _leitorTela = await _prefs.getLeitorTela();
       _tamanhoFonte = await _prefs.getTamanhoFonte();
@@ -154,6 +157,13 @@ class ConfigController extends ChangeNotifier {
     notifyListeners();
   }
   
+  /// Atualiza dark theme
+  Future<void> setDarkTheme(bool valor) async {
+    await _themeService.setDarkTheme(valor);
+    _darkTheme = valor;
+    notifyListeners();
+  }
+
   /// Atualiza alto contraste
   Future<void> setAltoContraste(bool valor) async {
     await _themeService.setAltoContraste(valor);

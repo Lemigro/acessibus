@@ -46,4 +46,17 @@ app.*.map.json
 # Firebase - Arquivos sensíveis (não commitar)
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
-lib/firebase_options.dart
+# lib/firebase_options.dart - Este arquivo pode ser versionado (chaves públicas do Firebase)
+
+# Variáveis de ambiente com credenciais
+.env
+.env.local
+.env.*.local
+
+# Android - Arquivos sensíveis
+android/local.properties
+android/key.properties
+android/*.jks
+android/app/debug
+android/app/profile
+android/app/release

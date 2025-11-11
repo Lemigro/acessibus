@@ -1,4 +1,5 @@
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import 'preferences_service.dart';
@@ -11,6 +12,7 @@ class AuthService {
 
   final DatabaseReference _database = FirebaseDatabase.instance.ref();
   final PreferencesService _prefs = PreferencesService();
+  final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
 
   Map<String, dynamic>? _currentUser;
 
@@ -113,16 +115,6 @@ class AuthService {
     }
   }
 
-  /// Login com Google (simulado - salva no Realtime Database)
-  Future<bool> signInWithGoogle() async {
-    try {
-      // Por enquanto, desabilitado - precisa de configuração do Google Sign-In
-      // Para usar, seria necessário configurar o app Android
-      throw Exception('google-sign-in-not-configured');
-    } catch (e) {
-      rethrow;
-    }
-  }
 
   /// Hash simples da senha (SHA256)
   String _hashPassword(String password) {
@@ -149,6 +141,13 @@ class AuthService {
       }
     }
 
+    // Faz logout do Firebase Auth
+    try {
+      await _firebaseAuth.signOut();
+    } catch (e) {
+      print('Erro ao fazer logout do Firebase: $e');
+    }
+
     _currentUser = null;
   }
 
@@ -158,6 +157,34 @@ class AuthService {
   /// Carrega usuário salvo localmente (se houver)
   Future<void> loadUserFromPrefs() async {
     try {
+      // Primeiro, tenta verificar se há um usuário autenticado no Firebase Auth
+      final User? firebaseUser = _firebaseAuth.currentUser;
+      
+      if (firebaseUser != null) {
+        // Usuário ainda está autenticado no Firebase
+        final email = firebaseUser.email ?? '';
+        final emailKey = email.toLowerCase().replaceAll('.', '_').replaceAll('@', '_at_');
+        
+        // Carrega dados do Realtime Database
+        final userRef = _database.child('user').child(emailKey);
+        final snapshot = await userRef.get();
+        
+        if (snapshot.exists) {
+          final userData = snapshot.value as Map<dynamic, dynamic>?;
+          if (userData != null) {
+            _currentUser = {
+              'email': userData['email']?.toString() ?? email,
+              'nome': userData['name']?.toString() ?? firebaseUser.displayName ?? '',
+              'emailKey': emailKey,
+              'photoUrl': userData['photoUrl']?.toString() ?? firebaseUser.photoURL,
+              'firebaseUid': firebaseUser.uid,
+            };
+            return;
+          }
+        }
+      }
+
+      // Se não há usuário no Firebase Auth, tenta carregar do SharedPreferences
       final email = await _prefs.getEmail();
       if (email != null) {
         // Tenta carregar dados do usuário do Realtime Database
@@ -172,6 +199,8 @@ class AuthService {
               'email': userData['email']?.toString() ?? email,
               'nome': userData['name']?.toString() ?? '',
               'emailKey': emailKey,
+              'photoUrl': userData['photoUrl']?.toString(),
+              'firebaseUid': userData['firebaseUid']?.toString(),
             };
           }
         }

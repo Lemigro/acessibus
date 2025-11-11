@@ -1,5 +1,5 @@
 import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -18,6 +18,7 @@ class _LinhaOnibusPageState extends State<LinhaOnibusPage> {
   bool _isLoadingLocation = true;
   final ThemeService _themeService = ThemeService();
   bool _altoContraste = false;
+  bool _isAnimating = false; // Flag para controlar animações simultâneas
 
   // Coordenadas padrão (Recife)
   static const CameraPosition _kInitialPosition = CameraPosition(
@@ -75,8 +76,9 @@ class _LinhaOnibusPageState extends State<LinhaOnibusPage> {
         _isLoadingLocation = false;
       });
 
+      // Anima a câmera de forma segura, evitando múltiplas animações simultâneas
       if (_mapController != null && _currentPosition != null) {
-        _mapController!.animateCamera(
+        _safeAnimateCamera(
           CameraUpdate.newLatLng(
             LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
           ),
@@ -100,9 +102,11 @@ class _LinhaOnibusPageState extends State<LinhaOnibusPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _altoContraste ? Colors.black : const Color(0xFFF5F5DC),
+      backgroundColor: _altoContraste ? Colors.black : Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.green,
+        backgroundColor: Theme.of(context).brightness == Brightness.dark 
+            ? Theme.of(context).colorScheme.surface 
+            : Colors.green,
         automaticallyImplyLeading: false,
         title: Semantics(
           header: true,
@@ -153,7 +157,7 @@ class _LinhaOnibusPageState extends State<LinhaOnibusPage> {
                         _mapController = controller;
                         // Se já temos a localização, centraliza o mapa
                         if (_currentPosition != null) {
-                          controller.animateCamera(
+                          _safeAnimateCamera(
                             CameraUpdate.newLatLng(
                               LatLng(
                                 _currentPosition!.latitude,
@@ -173,9 +177,10 @@ class _LinhaOnibusPageState extends State<LinhaOnibusPage> {
                         ),
                       ),
                     // Botão para centralizar na localização
+                    // Posicionado à esquerda para não sobrepor os controles de zoom do Google Maps
                     Positioned(
                       bottom: 16,
-                      right: 16,
+                      left: 16,
                       child: FloatingActionButton(
                         mini: true,
                         backgroundColor: Colors.green,
@@ -299,10 +304,37 @@ class _LinhaOnibusPageState extends State<LinhaOnibusPage> {
     });
   }
 
+  /// Anima a câmera de forma segura, evitando múltiplas animações simultâneas
+  /// que podem causar problemas com buffers de imagem no Android
+  Future<void> _safeAnimateCamera(CameraUpdate update) async {
+    if (_mapController == null || _isAnimating || !mounted) return;
+    
+    try {
+      _isAnimating = true;
+      await _mapController!.animateCamera(update);
+    } catch (e) {
+      // Ignora erros de animação se o widget foi desmontado
+      if (mounted) {
+        debugPrint('Erro ao animar câmera: $e');
+      }
+    } finally {
+      // Aguarda um delay maior antes de permitir nova animação (aumentado para 800ms)
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (mounted) {
+          _isAnimating = false;
+        }
+      });
+    }
+  }
+
   @override
   void dispose() {
     _themeService.removeListener(_onThemeChanged);
+    // Cancela qualquer animação em andamento
+    _isAnimating = false;
+    // Limpa o controller do mapa de forma segura
     _mapController?.dispose();
+    _mapController = null;
     super.dispose();
   }
 }

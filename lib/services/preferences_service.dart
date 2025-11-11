@@ -10,6 +10,7 @@ class PreferencesService {
   static const String _keyNome = 'user_nome';
   static const String _keyEmail = 'user_email';
   static const String _keyTamanhoFonte = 'tamanho_fonte';
+  static const String _keyDarkTheme = 'dark_theme';
   static const String _keyAltoContraste = 'alto_contraste';
   static const String _keyLeitorTela = 'leitor_tela';
   static const String _keyVibracao = 'vibracao';
@@ -50,6 +51,16 @@ class PreferencesService {
   Future<void> setTamanhoFonte(double tamanho) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_keyTamanhoFonte, tamanho);
+  }
+
+  Future<bool> getDarkTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyDarkTheme) ?? false;
+  }
+
+  Future<void> setDarkTheme(bool valor) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyDarkTheme, valor);
   }
 
   Future<bool> getAltoContraste() async {

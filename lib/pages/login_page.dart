@@ -78,22 +78,12 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  Future<void> _fazerLoginComGoogle() async {
-    // Google Sign-In não configurado ainda
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Login com Google não está configurado. Use email e senha.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: _altoContraste ? Colors.black : const Color(0xFFF5F5DC),
+      backgroundColor: _altoContraste ? Colors.black : theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -223,58 +213,7 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 16),
-
-                        // Divisor "OU"
-                        Row(
-                          children: [
-                            Expanded(child: Divider(color: Colors.grey[400])),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: Text(
-                                'OU',
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            Expanded(child: Divider(color: Colors.grey[400])),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Botão de login com Google
-                        Semantics(
-                          label: 'Botão para fazer login com Google',
-                          button: true,
-                          child: SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              onPressed: _authController.isLoading ? null : _fazerLoginComGoogle,
-                              icon: Image.asset(
-                                'assets/google_logo.png',
-                                height: 20,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return const Icon(
-                                    Icons.g_mobiledata,
-                                    color: Colors.green,
-                                    size: 24,
-                                  );
-                                },
-                              ),
-                              label: const Text(
-                                'Entrar com Google',
-                                style: TextStyle(color: Colors.green),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: Colors.green),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 24),
 
                         // Texto de cadastro
                         Semantics(

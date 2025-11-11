@@ -89,18 +89,29 @@ class AuthController extends ChangeNotifier {
   }
   
   String _getErrorMessage(dynamic error) {
-    if (error.toString().contains('user-not-found')) {
+    final errorStr = error.toString().toLowerCase();
+    
+    if (errorStr.contains('user-not-found')) {
       return 'Usuário não encontrado';
-    } else if (error.toString().contains('wrong-password')) {
+    } else if (errorStr.contains('wrong-password')) {
       return 'Senha incorreta';
-    } else if (error.toString().contains('email-already-in-use')) {
+    } else if (errorStr.contains('email-already-in-use')) {
       return 'Este email já está em uso';
-    } else if (error.toString().contains('weak-password')) {
+    } else if (errorStr.contains('weak-password')) {
       return 'Senha muito fraca';
-    } else if (error.toString().contains('invalid-email')) {
+    } else if (errorStr.contains('invalid-email')) {
       return 'Email inválido';
+    } else if (errorStr.contains('network-request-failed') || errorStr.contains('network')) {
+      return 'Erro de conexão. Verifique sua internet.';
+    } else if (errorStr.contains('popup') || errorStr.contains('blocked')) {
+      return 'Popup bloqueado pelo navegador. Permita popups para este site.';
+    } else if (errorStr.contains('permission-denied') || errorStr.contains('403')) {
+      return 'Erro de permissão. Verifique as configurações do Firebase.';
     }
-    return 'Erro: ${error.toString()}';
+    
+    // Log do erro para debug
+    print('Erro de autenticação: $error');
+    return 'Erro ao autenticar: ${error.toString()}';
   }
 }
 

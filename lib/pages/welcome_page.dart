@@ -45,7 +45,7 @@ class _WelcomePageState extends State<WelcomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _altoContraste ? Colors.black : const Color(0xFFF5F5DC),
+      backgroundColor: _altoContraste ? Colors.black : Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [

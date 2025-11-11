@@ -1,5 +1,5 @@
 import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -30,6 +30,7 @@ class _MapaPageState extends State<MapaPage> {
   Set<Polyline> _polylines = {};
   Set<Marker> _markers = {};
   bool _altoContraste = false;
+  bool _isAnimating = false; // Flag para controlar animações simultâneas
 
   // Coordenadas padrão (centro da cidade fictícia)
   static const CameraPosition _kInitialPosition = CameraPosition(
@@ -116,7 +117,8 @@ class _MapaPageState extends State<MapaPage> {
         _currentPosition = position;
       });
 
-      _mapController?.animateCamera(
+      // Anima a câmera de forma segura, evitando múltiplas animações simultâneas
+      _safeAnimateCamera(
         CameraUpdate.newLatLng(
           LatLng(position.latitude, position.longitude),
         ),
@@ -257,7 +259,7 @@ class _MapaPageState extends State<MapaPage> {
 
       // Ajustar câmera para mostrar toda a rota
       if (result.bounds != null) {
-        _mapController?.animateCamera(
+        _safeAnimateCamera(
           CameraUpdate.newLatLngBounds(result.bounds!, 100),
         );
       }
@@ -299,7 +301,7 @@ class _MapaPageState extends State<MapaPage> {
     _updateMarkers();
     
     // Centraliza o mapa no ponto selecionado
-    _mapController?.animateCamera(
+    _safeAnimateCamera(
       CameraUpdate.newLatLng(
         LatLng(ponto.latitude, ponto.longitude),
       ),
@@ -336,12 +338,37 @@ class _MapaPageState extends State<MapaPage> {
     _updateMarkers();
   }
 
+  /// Anima a câmera de forma segura, evitando múltiplas animações simultâneas
+  /// que podem causar problemas com buffers de imagem no Android
+  Future<void> _safeAnimateCamera(CameraUpdate update) async {
+    if (_mapController == null || _isAnimating || !mounted) return;
+    
+    try {
+      _isAnimating = true;
+      await _mapController!.animateCamera(update);
+    } catch (e) {
+      // Ignora erros de animação se o widget foi desmontado
+      if (mounted) {
+        debugPrint('Erro ao animar câmera: $e');
+      }
+    } finally {
+      // Aguarda um delay maior antes de permitir nova animação (aumentado para 800ms)
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (mounted) {
+          _isAnimating = false;
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _altoContraste ? Colors.black : const Color(0xFFF5F5DC),
+      backgroundColor: _altoContraste ? Colors.black : Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.green,
+        backgroundColor: Theme.of(context).brightness == Brightness.dark 
+            ? Theme.of(context).colorScheme.surface 
+            : Colors.green,
         title: Semantics(
           header: true,
           child: const Text(
@@ -710,7 +737,11 @@ class _MapaPageState extends State<MapaPage> {
   @override
   void dispose() {
     _themeService.removeListener(_onThemeChanged);
+    // Cancela qualquer animação em andamento
+    _isAnimating = false;
+    // Limpa o controller do mapa de forma segura
     _mapController?.dispose();
+    _mapController = null;
     super.dispose();
   }
 }

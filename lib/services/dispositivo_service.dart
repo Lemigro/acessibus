@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'esp8266_service.dart';
 import 'firebase_device_service.dart';
+import 'mqtt_service.dart';
 
 /// Serviço para comunicação com o dispositivo físico Acessibus
 /// 
@@ -18,8 +19,10 @@ class DispositivoService {
   String? _linhaSelecionada;
   final ESP8266Service _esp8266Service = ESP8266Service();
   final FirebaseDeviceService _firebaseDeviceService = FirebaseDeviceService();
+  final MqttService _mqttService = MqttService();
   String? _ipESP8266;
   String? _deviceId;
+  String? _deviceIdMqtt;
 
   /// Verifica se o dispositivo está conectado
   bool get conectado => _conectado;
@@ -65,6 +68,32 @@ class DispositivoService {
     _firebaseDeviceService.configurarDeviceId(deviceId);
   }
 
+  /// Configura o ID do dispositivo para comunicação via MQTT
+  /// 
+  /// [deviceId] - ID único do dispositivo na parada
+  /// [broker] - IP ou hostname do broker MQTT (opcional)
+  /// [port] - Porta do broker MQTT (opcional, padrão: 1883)
+  /// [username] - Usuário MQTT (opcional)
+  /// [password] - Senha MQTT (opcional)
+  void configurarDeviceIdMqtt({
+    required String deviceId,
+    String? broker,
+    int? port,
+    String? username,
+    String? password,
+  }) {
+    _deviceIdMqtt = deviceId;
+    _mqttService.configurarDeviceId(deviceId);
+    if (broker != null || port != null || username != null || password != null) {
+      _mqttService.configurarBroker(
+        broker: broker,
+        port: port,
+        username: username,
+        password: password,
+      );
+    }
+  }
+
   /// Envia a linha de ônibus selecionada para o dispositivo
   /// 
   /// [linha] - Número ou nome da linha de ônibus
@@ -88,7 +117,16 @@ class DispositivoService {
         }
       }
 
-      // Prioridade 2: Envia via HTTP direto se IP configurado
+      // Prioridade 2: Envia via MQTT se deviceId MQTT configurado
+      if (_deviceIdMqtt != null && _deviceIdMqtt!.isNotEmpty) {
+        final sucesso = await _mqttService.enviarLinha(linha);
+        if (sucesso) {
+          _linhaSelecionada = linha;
+          return true;
+        }
+      }
+
+      // Prioridade 3: Envia via HTTP direto se IP configurado
       if (_ipESP8266 != null && _ipESP8266!.isNotEmpty) {
         final sucesso = await _esp8266Service.enviarLinha(linha);
         if (sucesso) {
@@ -109,13 +147,18 @@ class DispositivoService {
   /// Inicia o monitoramento do dispositivo
   /// 
   /// Prioriza Firebase Realtime Database (compatível com código Arduino),
-  /// depois Firestore, depois HTTP direto
+  /// depois Firestore, depois MQTT, depois HTTP direto
   /// Quando o dispositivo detecta que o ônibus está chegando,
   /// o serviço notifica o usuário
   Future<bool> iniciarMonitoramento({
     String? ipESP8266,
     String? deviceIdFirebase,
     String? idOnibusRealtime, // ID no formato "onibus_132A" ou "onibus_251B"
+    String? deviceIdMqtt, // ID do dispositivo para comunicação via MQTT
+    String? mqttBroker, // IP ou hostname do broker MQTT
+    int? mqttPort, // Porta do broker MQTT
+    String? mqttUsername, // Usuário MQTT
+    String? mqttPassword, // Senha MQTT
   }) async {
     try {
       bool iniciado = false;
@@ -155,7 +198,38 @@ class DispositivoService {
         }
       }
 
-      // Prioridade 3: HTTP direto (ESP8266 via WiFi)
+      // Prioridade 3: MQTT
+      if (deviceIdMqtt != null && deviceIdMqtt.isNotEmpty) {
+        _deviceIdMqtt = deviceIdMqtt;
+        _mqttService.configurarDeviceId(deviceIdMqtt);
+        
+        // Configura broker MQTT se fornecido
+        if (mqttBroker != null || mqttPort != null || mqttUsername != null || mqttPassword != null) {
+          _mqttService.configurarBroker(
+            broker: mqttBroker,
+            port: mqttPort,
+            username: mqttUsername,
+            password: mqttPassword,
+          );
+        }
+        
+        try {
+          // Inicia monitoramento MQTT
+          // Se houver linha selecionada, monitora também a localização do ônibus
+          iniciado = await _mqttService.iniciarMonitoramento(
+            deviceId: deviceIdMqtt,
+            linha: _linhaSelecionada, // Monitora localização se linha selecionada
+          );
+          if (iniciado) {
+            _conectado = true;
+            return true;
+          }
+        } catch (e) {
+          print('Erro ao iniciar monitoramento MQTT: $e');
+        }
+      }
+
+      // Prioridade 4: HTTP direto (ESP8266 via WiFi)
       if (ipESP8266 != null && ipESP8266.isNotEmpty) {
         _ipESP8266 = ipESP8266;
         _esp8266Service.configurarIP(ipESP8266);
@@ -183,6 +257,7 @@ class DispositivoService {
   Future<void> pararMonitoramento() async {
     await _esp8266Service.pararMonitoramento();
     await _firebaseDeviceService.pararMonitoramento();
+    await _mqttService.pararMonitoramento();
     _conectado = false;
   }
 
@@ -198,7 +273,7 @@ class DispositivoService {
 
   /// Verifica se o dispositivo está disponível
   /// 
-  /// Tenta verificar Firebase primeiro, depois HTTP
+  /// Tenta verificar Firebase primeiro, depois MQTT, depois HTTP
   Future<bool> verificarDisponibilidade() async {
     try {
       // Prioridade 1: Verifica Firebase
@@ -209,7 +284,15 @@ class DispositivoService {
         }
       }
 
-      // Prioridade 2: Verifica HTTP direto
+      // Prioridade 2: Verifica MQTT
+      if (_deviceIdMqtt != null && _deviceIdMqtt!.isNotEmpty) {
+        final disponivel = await _mqttService.verificarDisponibilidade();
+        if (disponivel) {
+          return true;
+        }
+      }
+
+      // Prioridade 3: Verifica HTTP direto
       if (_ipESP8266 != null && _ipESP8266!.isNotEmpty) {
         final disponivel = await _esp8266Service.verificarDisponibilidade();
         if (disponivel) {
@@ -228,5 +311,8 @@ class DispositivoService {
 
   /// Retorna o ID do dispositivo Firebase configurado
   String? get deviceIdFirebase => _deviceId;
+
+  /// Retorna o ID do dispositivo MQTT configurado
+  String? get deviceIdMqtt => _deviceIdMqtt;
 }
 

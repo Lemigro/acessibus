@@ -16,6 +16,7 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
   final _ipESP8266Controller = TextEditingController();
   final _idOnibusRealtimeController = TextEditingController();
   bool _altoContraste = false;
+  bool _darkTheme = false;
 
   @override
   void initState() {
@@ -28,6 +29,7 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
   void _onThemeChanged() {
     setState(() {
       _altoContraste = _themeService.altoContraste;
+      _darkTheme = _themeService.darkTheme;
     });
   }
 
@@ -56,6 +58,7 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
     await _themeService.carregarConfiguracoes();
     setState(() {
       _altoContraste = _themeService.altoContraste;
+      _darkTheme = _themeService.darkTheme;
     });
   }
 
@@ -91,12 +94,13 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
       );
     }
     
+    final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: _altoContraste
           ? Colors.black
-          : const Color(0xFFF5F5DC),
+          : theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: _altoContraste ? Colors.grey[900] : Colors.green,
+        backgroundColor: _altoContraste ? Colors.grey[900] : (theme.brightness == Brightness.dark ? theme.colorScheme.surface : Colors.green),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
@@ -204,6 +208,35 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
                               value: _configController.altoContraste,
                               activeThumbColor: Colors.green,
                               onChanged: (valor) => _configController.setAltoContraste(valor),
+                            ),
+                          ),
+                          const Divider(),
+                          // Dark Theme
+                          Semantics(
+                            label: 'Ativar ou desativar tema escuro',
+                            child: SwitchListTile(
+                              title: Text(
+                                'Tema Escuro',
+                                style: TextStyle(
+                                  fontSize: (_configController.tamanhoFonteEspecifico ?? 18).toDouble(),
+                                  color: _altoContraste
+                                      ? Colors.white
+                                      : Colors.black87,
+                                ),
+                              ),
+                              subtitle: Text(
+                                'Ativa o modo escuro do aplicativo',
+                                style: TextStyle(
+                                  fontSize: ((_configController.tamanhoFonteEspecifico ?? 18) - 2)
+                                      .toDouble(),
+                                  color: _altoContraste
+                                      ? Colors.grey[300]
+                                      : Colors.grey[600],
+                                ),
+                              ),
+                              value: _configController.darkTheme,
+                              activeThumbColor: Colors.green,
+                              onChanged: (valor) => _configController.setDarkTheme(valor),
                             ),
                           ),
                           const Divider(),
